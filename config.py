@@ -19,6 +19,14 @@ VOLUME_RAW = f"/Volumes/{CATALOG}/{SCHEMA}/raw"
 WAREHOUSE_ID = "fe2eca1293a1403a"
 WAREHOUSE_NAME = "bnpl-fpd-samk-wh"
 
+# Lakebase (Autoscaling Postgres; `databricks postgres` surface, not the retired `database` tier)
+LAKEBASE_PROJECT = "bnpl-fpd-samk"
+LAKEBASE_BRANCH = "projects/bnpl-fpd-samk/branches/production"
+LAKEBASE_ENDPOINT = "projects/bnpl-fpd-samk/branches/production/endpoints/primary"
+LAKEBASE_DB = "databricks_postgres"
+LAKEBASE_HOST = "ep-wispy-unit-d1og6839.database.us-west-2.cloud.databricks.com"
+LAKEBASE_SCHEMA = "bnpl"
+
 # GenAI (single ai_query call; swappable)
 GENAI_ENDPOINT = "databricks-claude-haiku-4-5"
 
