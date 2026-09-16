@@ -27,6 +27,13 @@ LAKEBASE_DB = "databricks_postgres"
 LAKEBASE_HOST = "ep-wispy-unit-d1og6839.database.us-west-2.cloud.databricks.com"
 LAKEBASE_SCHEMA = "bnpl"
 
+# Model Serving (real-time FPD scoring)
+SERVING_ENDPOINT = "bnpl-fpd-samk-endpoint"
+MODEL_UC = "bnpl_fpd_samk.demo.fpd_model"
+
+# Genie space (NL investigation surface)
+GENIE_SPACE_ID = "01f1b1b88d51197c9e023880108f6c77"
+
 # GenAI (single ai_query call; swappable)
 GENAI_ENDPOINT = "databricks-claude-haiku-4-5"
 

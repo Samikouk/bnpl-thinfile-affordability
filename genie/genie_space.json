@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {"id": "10000000000000000000000000000001", "question": ["Which merchant category has the highest first-payment-default rate, and how many approvals did it drive?"]},
+      {"id": "10000000000000000000000000000002", "question": ["What is the overall approval rate and first-payment-default rate?"]},
+      {"id": "10000000000000000000000000000003", "question": ["How do thin-file customers compare to bureau-scored customers on first-payment default?"]}
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {"identifier": "bnpl_fpd_samk.demo.gold_decisions"},
+      {"identifier": "bnpl_fpd_samk.demo.gold_fpd_labels"},
+      {"identifier": "bnpl_fpd_samk.demo.gold_repayments"}
+    ]
+  },
+  "instructions": {
+    "example_question_sqls": [
+      {
+        "id": "20000000000000000000000000000001",
+        "question": ["Which merchant category has the highest first-payment-default rate, and how many approvals did it drive?"],
+        "sql": [
+          "SELECT merchant_category,\n",
+          "       ROUND(AVG(fpd_actual) * 100, 2) AS fpd_pct,\n",
+          "       COUNT(*) AS applications,\n",
+          "       SUM(CASE WHEN decision = 'APPROVE' THEN 1 ELSE 0 END) AS approvals\n",
+          "FROM bnpl_fpd_samk.demo.gold_decisions\n",
+          "GROUP BY merchant_category\n",
+          "ORDER BY fpd_pct DESC"
+        ]
+      }
+    ],
+    "text_instructions": [
+      {
+        "id": "30000000000000000000000000000001",
+        "content": [
+          "This space covers a Buy-Now-Pay-Later portfolio. gold_decisions has one row per checkout application with: model score, APPROVE/DECLINE decision, reason_codes, merchant_category, region, thin_file_flag, and fpd_actual (1 = first-payment default).\n",
+          "First-payment-default (FPD) rate = AVG(fpd_actual). Approval rate = share where decision = 'APPROVE'.\n",
+          "For 'which cohort drives FPD' questions, group gold_decisions by merchant_category and order by FPD rate descending; include the approvals count.\n",
+          "thin_file_flag = 1 means the customer has no credit-bureau history. Compare thin-file vs bureau by grouping on thin_file_flag.\n",
+          "gold_repayments has instalment-level rows; gold_fpd_labels has the per-application FPD label."
+        ]
+      }
+    ]
+  }
+}
