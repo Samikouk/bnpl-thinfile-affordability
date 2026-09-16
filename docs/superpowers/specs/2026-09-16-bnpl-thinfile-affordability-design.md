@@ -245,10 +245,10 @@ Target 4 to 8 hours of build. Order chosen so the highest-evidence-risk stages a
 | Shared-workspace collisions | Namespacing and no-touch rules (Section 11). |
 | Genie Conversation API is Public Preview | Verified reachable in Step 0; capture transcript early. |
 
-## 14. Open decisions for the user
+## 14. Decisions locked (2026-09-16)
 
-1. App framework: FastAPI + minimal UI, or AppKit (Node/React).
-2. Foundation-model endpoint for the GenAI call: `databricks-claude-haiku-4-5` (fast/cheap) or `databricks-claude-sonnet-5` (higher quality narrative).
-3. Product/demo name for the deck and app (working title: "Cold-Start Affordability Console").
-4. Deck format: Google Slides shareable link, or an HTML deck committed to the repo.
-5. Repo home and public-repo timing (build local now, decide before submission).
+1. App framework: **AppKit (Node/TypeScript/React)** via the `databricks-apps` skill.
+2. Foundation-model endpoint for the GenAI call: **`databricks-claude-haiku-4-5`** (fast/cheap, swappable).
+3. Product/demo name: **"Cold-Start Affordability Console"** (working title, may refine for the deck).
+4. Deck format: **Google Slides**, shared "Anyone with the link" as Viewer.
+5. Repo: build local under `~/code/personal/bnpl-thinfile-affordability` now; make public before submission.
