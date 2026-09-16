@@ -34,6 +34,11 @@ MODEL_UC = "bnpl_fpd_samk.demo.fpd_model"
 # Genie space (NL investigation surface)
 GENIE_SPACE_ID = "01f1b1b88d51197c9e023880108f6c77"
 
+# Databricks App (Approval & Early-Cure Console)
+APP_NAME = "bnpl-cure-console"
+APP_URL = "https://bnpl-cure-console-1444828305810485.aws.databricksapps.com"
+APP_SP_CLIENT_ID = "48941986-a3e0-415d-8e2e-74d5d61b6523"
+
 # GenAI (single ai_query call; swappable)
 GENAI_ENDPOINT = "databricks-claude-haiku-4-5"
 
