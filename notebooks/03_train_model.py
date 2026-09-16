@@ -160,22 +160,26 @@ dec = pd.DataFrame({
 # MAGIC %md ## Matched-approval-rate: model vs bureau-only baseline (same approval count)
 
 # COMMAND ----------
-m_appr = proba < cutoff
+# Compute on the HELD-OUT TEST SET only (no train rows) for an honest comparison.
+df_te = df.iloc[k:].reset_index(drop=True)
+proba_te = p_te
+cutoff_te = float(np.quantile(proba_te, APPROVE_RATE))
+m_appr = proba_te < cutoff_te
 n_appr = int(m_appr.sum())
 
-bureau = pd.to_numeric(df["bureau_score"], errors="coerce").values
+bureau = pd.to_numeric(df_te["bureau_score"], errors="coerce").values
 # bureau-only baseline: risk = 850 - bureau; thin-file (no bureau) -> worst possible.
 baseline_risk = np.where(np.isnan(bureau), np.inf, 850.0 - bureau)
 order = np.argsort(baseline_risk, kind="stable")
-b_appr = np.zeros(len(df), dtype=bool)
+b_appr = np.zeros(len(df_te), dtype=bool)
 b_appr[order[:n_appr]] = True
 
 
 def fpd_rate(mask):
-    return float(y[mask].mean()) if mask.sum() > 0 else float("nan")
+    return float(yte[mask].mean()) if mask.sum() > 0 else float("nan")
 
 
-avg_amt_approved = float(df.loc[m_appr, "amount"].mean())
+avg_amt_approved = float(df_te.loc[m_appr, "amount"].mean())
 model_fpd = fpd_rate(m_appr)
 base_fpd = fpd_rate(b_appr)
 # simple loss proxy on the approved book (principal at risk, 25% recovery)
@@ -187,7 +191,9 @@ result = {
     "test_auc": round(auc, 4),
     "test_pr_auc": round(pr_auc, 4),
     "rows_scored": int(len(df)),
-    "approval_rate": round(n_appr / len(df), 4),
+    "matched_rate_basis": "held-out test set",
+    "test_rows": int(len(df_te)),
+    "approval_rate": round(n_appr / len(df_te), 4),
     "n_approved": n_appr,
     "model_approved_fpd": round(model_fpd, 4),
     "baseline_approved_fpd": round(base_fpd, 4),
