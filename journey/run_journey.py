@@ -2,38 +2,36 @@
 
 Walks ONE applicant through the whole integrated loop, logging every step:
 
-  gold feature row  ->  build_features  ->  Model Serving score
+  scored decision (served from Lakebase, OLTP latency)
   ->  cohort threshold (Lakebase)  ->  APPROVE/DECLINE
   ->  account slips (first-payment default)  ->  ai_query cure draft
   ->  guardrail check  ->  INSERT cure_case (Lakebase)
-  ->  Genie surfaces the worst cohort  ->  UPDATE cohort_threshold (Lakebase)
+  ->  Genie surfaced the worst cohort  ->  UPDATE cohort_threshold (Lakebase)
   ->  re-read threshold to show the loop closed.
 
-Reuses data/features.build_features and data/guardrail (no duplicated logic).
-Shells out to the Databricks CLI and `databricks psql` for the live services.
+The FPD model (UC-registered `bnpl_fpd_samk.demo.fpd_model`) produces the score;
+it is materialised to gold_decisions and synced to Lakebase `public.decisions`,
+which is the low-latency serving path the console reads. Reuses data/guardrail.
 Run from the repo root:  PYTHONPATH=. python3 journey/run_journey.py
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 
-import pandas as pd
-
-from config import (PROFILE, CATALOG, SCHEMA, SERVING_ENDPOINT, GENAI_ENDPOINT,
-                    GENIE_SPACE_ID, LAKEBASE_PROJECT)
-from data.features import build_features, FEATURE_COLUMNS
+from config import PROFILE, CATALOG, SCHEMA, GENAI_ENDPOINT, LAKEBASE_PROJECT
 from data.guardrail import guardrail_check
 
 FQ = f"{CATALOG}.{SCHEMA}"
-PSQL_ENV = {"PATH": "/opt/homebrew/opt/libpq/bin:/usr/bin:/bin:/usr/local/bin"}
 APPROVED_PLANS = ["split", "instalments", "14 day extension", "14-day extension",
                   "reduced payment plan", "reduced plan"]
+ENV = dict(os.environ); ENV["PATH"] = "/opt/homebrew/opt/libpq/bin:" + ENV.get("PATH", "")
 
 
 def step(n, title):
-    print(f"\n{'=' * 72}\nSTEP {n}: {title}\n{'=' * 72}")
+    print(f"\n{'=' * 74}\nSTEP {n}: {title}\n{'=' * 74}")
 
 
 def sql(query):
@@ -46,84 +44,76 @@ def sql(query):
         print(out.stdout, out.stderr); return []
 
 
-def psql(query):
-    import os
-    env = dict(os.environ); env.update(PSQL_ENV)
-    out = subprocess.run(
-        ["databricks", "psql", "--project", LAKEBASE_PROJECT, "--profile", PROFILE, "--", "-t", "-c", query],
-        capture_output=True, text=True, env=env)
-    return (out.stdout + out.stderr).strip()
+_BANNER = ("Connecting to", "Project:", "Branch:", "Endpoint:")
+
+
+def psql(*args):
+    base = ["databricks", "psql", "--project", LAKEBASE_PROJECT, "--profile", PROFILE, "--"]
+    out = subprocess.run(base + list(args), capture_output=True, text=True, env=ENV)
+    return "\n".join(l for l in (out.stdout + out.stderr).splitlines()
+                     if l.strip() and not l.startswith(_BANNER))
 
 
 def main():
     print("BNPL COLD-START AFFORDABILITY — END-TO-END JOURNEY")
 
-    # 1. pick an approved-then-slipped applicant and pull its raw gold feature row
-    step(1, "Ingest: pull one applicant's point-in-time feature row from gold")
-    picked = sql(
-        f"SELECT application_id FROM {FQ}.gold_decisions "
-        f"WHERE decision='APPROVE' AND fpd_actual=1 AND merchant_category='Travel' LIMIT 1")
-    app_id = picked[0]["application_id"]
-    frow = sql(f"SELECT * FROM {FQ}.gold_features WHERE application_id='{app_id}'")[0]
-    drow = sql(f"SELECT merchant_category, reason_codes, round(score,4) AS score, thin_file_flag "
-               f"FROM {FQ}.gold_decisions WHERE application_id='{app_id}'")[0]
-    print(f"applicant={app_id} merchant={drow['merchant_category']} thin_file={drow['thin_file_flag']}")
-    print(f"amount={frow['amount']} disposable={frow['disposable_income_proxy']} "
-          f"ratio={frow['amount_to_disposable_ratio']} bureau={frow.get('bureau_score')}")
+    # 1. pick an approved-then-slipped Travel applicant from the synced decisions (Lakebase)
+    step(1, "Serve: read a scored decision from Lakebase (public.decisions)")
+    pick = psql("-t", "-A", "-F", "|", "-c",
+                "SELECT application_id, merchant_category, ROUND(score::numeric,4), reason_codes "
+                "FROM public.decisions WHERE decision='APPROVE' AND fpd_actual=1 "
+                "AND merchant_category='Travel' ORDER BY score DESC LIMIT 1")
+    app_id, cat, score, reasons = pick.split("|", 3)
+    score = float(score)
+    print(f"applicant={app_id}  merchant={cat}  score={score}")
+    print(f"reason codes (deterministic, model SHAP): {reasons}")
 
-    # 2. build features (same transform as training) and score via Model Serving
-    step(2, "Score: build_features -> Model Serving endpoint (real-time)")
-    X = build_features(pd.DataFrame([frow]))
-    record = {c: (None if pd.isna(X.iloc[0][c]) else X.iloc[0][c].item()) for c in FEATURE_COLUMNS}
-    payload = json.dumps({"dataframe_records": [record]})
-    resp = subprocess.run(
-        ["databricks", "serving-endpoints", "query", SERVING_ENDPOINT, "--profile", PROFILE, "--json", payload],
-        capture_output=True, text=True)
-    served = json.loads(resp.stdout)
-    score = float(served["predictions"][0])
-    print(f"served FPD probability = {score:.4f}")
-    print(f"reason codes (deterministic, from batch SHAP) = {drow['reason_codes']}")
+    # 2. serving latency: warm decision lookup by key (second query = connection already open)
+    step(2, "Serving latency: warm Lakebase decision lookup by application_id")
+    print(psql("-c", "\\timing on",
+               "-c", f"SELECT 1 FROM public.decisions WHERE application_id='{app_id}'",
+               "-c", f"SELECT application_id, ROUND(score::numeric,4) AS score, decision "
+                     f"FROM public.decisions WHERE application_id='{app_id}'"))
 
     # 3. read the cohort threshold from Lakebase and decide
     step(3, "Decide: read cohort threshold from Lakebase, apply policy")
-    cat = drow["merchant_category"]
-    thr = float(psql(f"SELECT threshold FROM bnpl.cohort_thresholds WHERE merchant_category='{cat}'"))
+    thr = float(psql("-t", "-A", "-c",
+                     f"SELECT threshold FROM bnpl.cohort_thresholds WHERE merchant_category='{cat}'"))
     decision = "APPROVE" if score < thr else "DECLINE"
-    print(f"threshold[{cat}]={thr}  score={score:.4f}  ->  DECISION={decision}")
+    print(f"threshold[{cat}]={thr}  score={score}  ->  DECISION={decision}")
 
-    # 4. the account slips; draft a cure note via ai_query, then guardrail it
+    # 4. account slips; draft a cure note via ai_query, then guardrail it
     step(4, "Slip -> GenAI cure draft (for human review) -> guardrail")
-    reasons = drow["reason_codes"]
     prompt = (
         "You are drafting an internal early-cure note for a Buy Now Pay Later lender, for HUMAN "
         "REVIEW before any use. The account was approved then missed its first instalment. Offer only "
         "these approved options: split the remaining balance into instalments, a 14 day extension, or a "
         "reduced payment plan. Be supportive and Consumer Duty aligned. No interest, fees, legal threats, "
-        f"names, emails, or account numbers. Reason codes: {reasons}. Keep it under 90 words.")
-    cure = sql(f"SELECT ai_query('{GENAI_ENDPOINT}', '{prompt.replace(chr(39), ' ')}') AS t")[0]["t"]
+        f"names, emails, or account numbers. Reason codes: {reasons}. Keep it under 80 words.")
+    cure = sql(f"SELECT ai_query('{GENAI_ENDPOINT}', '{prompt}') AS t")[0]["t"]
     print("cure draft:\n" + cure)
-    gr = guardrail_check(cure, APPROVED_PLANS)
-    print(f"guardrail: {gr}")
+    print(f"guardrail: {guardrail_check(cure, APPROVED_PLANS)}")
 
     # 5. insert the cure case into Lakebase (mutable OLTP)
     step(5, "Queue: INSERT cure_case into Lakebase (mutable OLTP)")
     safe = cure.replace("'", "''")[:900]
-    print(psql(
-        f"INSERT INTO bnpl.cure_cases (application_id, customer_id, status, priority, cure_narrative) "
-        f"VALUES ('{app_id}', '{frow['customer_id']}', 'OPEN', 'HIGH', '{safe}') RETURNING case_id, application_id, status"))
+    print(psql("-c",
+               f"INSERT INTO bnpl.cure_cases (application_id, status, priority, cure_narrative) "
+               f"VALUES ('{app_id}', 'OPEN', 'HIGH', '{safe}') "
+               f"RETURNING case_id, application_id, status, priority"))
 
-    # 6. Genie surfaces the worst cohort -> analyst tightens that threshold (loop closes)
-    step(6, "Learn: Genie surfaced 'Travel' as worst cohort -> tighten its threshold")
-    before = psql("SELECT merchant_category, threshold FROM bnpl.cohort_thresholds WHERE merchant_category='Travel'")
-    print("before: " + before)
-    print(psql("UPDATE bnpl.cohort_thresholds SET threshold=0.15, updated_by=current_user, updated_at=now() "
-               "WHERE merchant_category='Travel' RETURNING merchant_category, threshold"))
-    after = psql("SELECT merchant_category, threshold FROM bnpl.cohort_thresholds WHERE merchant_category='Travel'")
-    print("after:  " + after)
+    # 6. Genie surfaced the worst cohort -> analyst tightens that threshold (loop closes)
+    step(6, "Learn: Genie surfaced 'Travel' as worst cohort (7.36%) -> tighten threshold")
+    print("before: " + psql("-t", "-A", "-c",
+                            "SELECT merchant_category||' '||threshold FROM bnpl.cohort_thresholds WHERE merchant_category='Travel'"))
+    print(psql("-c", "UPDATE bnpl.cohort_thresholds SET threshold=0.15, updated_by=current_user, "
+                     "updated_at=now() WHERE merchant_category='Travel' RETURNING merchant_category, threshold"))
+    print("after:  " + psql("-t", "-A", "-c",
+                            "SELECT merchant_category||' '||threshold FROM bnpl.cohort_thresholds WHERE merchant_category='Travel'"))
 
-    print("\n" + "=" * 72)
-    print("JOURNEY COMPLETE: ingest -> govern -> serve -> decide -> cure -> queue -> learn.")
-    print("=" * 72)
+    print(f"\n{'=' * 74}")
+    print("JOURNEY COMPLETE: serve -> decide -> slip -> cure -> queue -> learn -> re-threshold.")
+    print("=" * 74)
 
 
 if __name__ == "__main__":

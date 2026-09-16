@@ -1,0 +1,74 @@
+BNPL COLD-START AFFORDABILITY — END-TO-END JOURNEY
+
+==========================================================================
+STEP 1: Serve: read a scored decision from Lakebase (public.decisions)
+==========================================================================
+applicant=A1007312  merchant=Travel  score=0.547
+reason codes (deterministic, model SHAP): Recently created email address (thin digital footprint)
+
+==========================================================================
+STEP 2: Serving latency: warm Lakebase decision lookup by application_id
+==========================================================================
+Timing is on.
+ ?column? 
+----------
+        1
+(1 row)
+Time: 150.670 ms
+ application_id | score  | decision 
+----------------+--------+----------
+ A1007312       | 0.5470 | APPROVE
+(1 row)
+Time: 150.947 ms
+
+==========================================================================
+STEP 3: Decide: read cohort threshold from Lakebase, apply policy
+==========================================================================
+threshold[Travel]=0.3  score=0.547  ->  DECISION=DECLINE
+
+==========================================================================
+STEP 4: Slip -> GenAI cure draft (for human review) -> guardrail
+==========================================================================
+cure draft:
+# Early Cure Note – DRAFT FOR REVIEW
+
+We've noticed a missed first instalment. We're here to help.
+
+**Your options:**
+- Restructure remaining balance into new instalments
+- 14-day payment extension
+- Reduced payment plan
+
+We understand you're newly registered with us. Let's find what works best for your situation right now.
+
+**Reply within 7 days** to choose your option or discuss your circumstances.
+
+We're committed to supporting you fairly.
+
+---
+*FOR INTERNAL REVIEW ONLY*
+guardrail: {'ok': True, 'violations': []}
+
+==========================================================================
+STEP 5: Queue: INSERT cure_case into Lakebase (mutable OLTP)
+==========================================================================
+ case_id | application_id | status | priority 
+---------+----------------+--------+----------
+       2 | A1007312       | OPEN   | HIGH
+(1 row)
+INSERT 0 1
+
+==========================================================================
+STEP 6: Learn: Genie surfaced 'Travel' as worst cohort (7.36%) -> tighten threshold
+==========================================================================
+before: Travel 0.3
+ merchant_category | threshold 
+-------------------+-----------
+ Travel            |      0.15
+(1 row)
+UPDATE 1
+after:  Travel 0.15
+
+==========================================================================
+JOURNEY COMPLETE: serve -> decide -> slip -> cure -> queue -> learn -> re-threshold.
+==========================================================================
