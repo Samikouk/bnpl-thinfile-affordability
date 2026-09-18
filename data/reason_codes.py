@@ -19,6 +19,8 @@ REASON_MAP = {
     "customer_tenure_days": "Short customer tenure",
     "bureau_missing": "No credit-bureau history (thin file)",
     "bureau_score": "Low credit-bureau score",
+    "prior_bnpl_ontime_rate": "Low on-time rate on prior BNPL plans",
+    "prior_bnpl_missing": "No prior BNPL repayment history",
 }
 
 

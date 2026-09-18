@@ -1,5 +1,11 @@
 BNPL COLD-START AFFORDABILITY — END-TO-END JOURNEY
 
+NOTE (enhancements/closed-loop-console): journey/run_journey.py no longer
+re-decides the historical checkout in step 3. It keeps the Lakebase APPROVE
+as history, then re-applies score vs the new threshold after the Travel
+UPDATE. Re-run the script against the workspace to replace this log. The
+transcript below is the previous run (APPROVE then DECLINE on the same row).
+
 ==========================================================================
 STEP 1: Serve: read a scored decision from Lakebase (public.decisions)
 ==========================================================================

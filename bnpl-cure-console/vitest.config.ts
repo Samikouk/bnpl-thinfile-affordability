@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export default defineConfig({
   test: {
-    passWithNoTests: true,
+    passWithNoTests: false,
     globals: true,
     environment: 'node',
     exclude: ['**/node_modules/**', '**/dist/**', '**/.databricks/**'],

@@ -30,7 +30,16 @@ Catalog as `bnpl_fpd_samk.demo.fpd_model` (XGBoost). Run 2026-09-16.
 - **AUC 0.795, PR-AUC 0.234** on a held-out, time-based split with a 5.5% base rate.
   Realistic for thin-file FPD (not a suspiciously perfect model; label noise was
   calibrated deliberately, see `data/tune_noise.py`).
+- **Operational decisions** (this branch): `gold_decisions.decision` is `score <`
+  the per-merchant cohort threshold (default 0.30, `data/policy.py`). That is
+  what Lakebase and the console use. Re-run `notebooks/03_train_model.py` to
+  refresh the synced table; the 20k-row snapshot below is still the previous
+  global 85% quantile policy.
 - **Matched-approval-rate 2x2 (the exec's proof), held-out test set only:**
+  still a *volume-matched* 85% quantile, independent of the operational cut.
+  The training notebook now also emits `matched_thin_file` and
+  `matched_bureau_scored` plus Brier / confusion / region monitors. Those
+  slices populate on the next training run.
 
   | policy | approval rate | approved FPD | loss proxy (£) |
   |---|---|---|---|

@@ -46,4 +46,7 @@ the managed image). Rather than spend repeated multi-minute redeploy cycles on a
 container dependency issue in a time-boxed demo, the endpoint was deleted and the
 score is served from Lakebase (the operational path the console uses anyway). The
 UC-registered model plus the batch matched-rate evidence carry the ML stage. The
-production fix is to pin the serving env to the training env; that is a follow-up.
+production fix is to pin the serving env to the training xgboost version and wrap
+checkout scoring with `data/serving.py::FpdScorer` so `build_features` and the
+cohort-threshold policy cannot drift. See `notebooks/04_serve_reason.py`. Do not
+quote a p50/p99 until that warm endpoint exists.

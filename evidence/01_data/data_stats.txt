@@ -18,18 +18,18 @@ AFFORDABILITY-DOMINANT latent weights (on standardised signals):
    bureau_score                     -0.60
 
 applications columns (checkout features, no outcome column):
-   application_id, customer_id, ts, merchant_id, merchant_category, amount, channel, device_id, ip_hash
+   application_id, customer_id, ts, merchant_id, merchant_category, amount, channel, device_id, ip_hash, prior_bnpl_ontime_rate
 
 FPD rate by merchant category (drives the Genie cohort story):
-   Travel         11.20%
-   Electronics     8.13%
-   Jewellery       7.40%
-   Home            5.84%
+   Travel          7.36%
+   Electronics     6.78%
+   Jewellery       6.67%
+   Home            6.28%
    Gaming          4.75%
-   Fitness         2.90%
-   Fashion         2.32%
-   Beauty          1.32%
+   Fitness         4.42%
+   Fashion         4.39%
+   Beauty          3.29%
 
 FPD rate: thin-file vs bureau-scored (cold-start is harder):
-   thin-file  n=  9906  FPD= 5.95%
-   bureau     n= 10094  FPD= 5.06%
+   thin-file  n=  9906  FPD= 8.14%
+   bureau     n= 10094  FPD= 2.91%

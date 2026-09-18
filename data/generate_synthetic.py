@@ -114,7 +114,7 @@ def generate(seed: int = 7, n_customers: int = 5000, n_apps: int = 12000) -> dic
     cat_idx = rng.integers(0, len(categories), n_apps)
     merchant_category = categories[cat_idx]
     amount = np.clip(cat_base[cat_idx] * rng.lognormal(0.0, 0.35, n_apps), 40, 2000).round(2)
-    merchant_id = np.array([f"M{200 + (i % 60)}" for i in cat_idx])
+    merchant_id = np.array([f"M{200 + (i % 60)}" for i in range(n_apps)])
     channel = rng.choice(["web", "ios", "android"], n_apps, p=[0.4, 0.35, 0.25])
     device_id = np.array([f"D{i}" for i in range(n_apps)])
     ip_hash = np.array([f"ip_{h:08x}" for h in rng.integers(0, 16**8, n_apps)])
@@ -122,6 +122,9 @@ def generate(seed: int = 7, n_customers: int = 5000, n_apps: int = 12000) -> dic
     ts = start + rng.integers(0, 90 * 24 * 3600, n_apps).astype("timedelta64[s]")
 
     device_risk_score = np.clip(rng.beta(2, 6, n_apps), 0, 1).round(3)
+    # Vendor-supplied velocity at checkout (device-intel feed), not derived
+    # from this applications table. Deriving it here would couple the DGP
+    # to join cardinality and change committed FPD rates.
     applications_last_24h = rng.poisson(0.6, n_apps)
     applications_last_7d = applications_last_24h + rng.poisson(1.2, n_apps)
 
@@ -178,6 +181,9 @@ def generate(seed: int = 7, n_customers: int = 5000, n_apps: int = 12000) -> dic
             rows.append((app_id, k, due, paid, paid_date))
     repayments = pd.DataFrame(rows, columns=["application_id", "installment_no", "due_date", "paid_flag", "paid_date"])
 
+    applications = applications.copy()
+    applications["prior_bnpl_ontime_rate"] = _prior_bnpl_ontime_rate(applications, repayments)
+
     return {
         "customers": customers,
         "open_banking": open_banking,
@@ -185,3 +191,25 @@ def generate(seed: int = 7, n_customers: int = 5000, n_apps: int = 12000) -> dic
         "applications": applications,
         "repayments": repayments,
     }
+
+
+def _prior_bnpl_ontime_rate(applications: pd.DataFrame, repayments: pd.DataFrame) -> pd.Series:
+    """Share of prior BNPL first instalments paid, per customer. NULL if none.
+
+    Uses only applications with ts strictly before the current row, so the
+    feature is checkout-available and leakage-safe.
+    """
+    first = repayments.loc[repayments["installment_no"] == 1, ["application_id", "paid_flag"]]
+    hist = applications[["application_id", "customer_id", "ts"]].merge(
+        first, on="application_id", how="left"
+    )
+    hist = hist.sort_values(["customer_id", "ts", "application_id"], kind="mergesort")
+    grp = hist.groupby("customer_id", sort=False)
+    prior_n = grp.cumcount().to_numpy()
+    paid = hist["paid_flag"].fillna(0).to_numpy(dtype=float)
+    prior_paid = grp["paid_flag"].cumsum().to_numpy(dtype=float) - paid
+    rate = np.full(len(prior_n), np.nan)
+    nz = prior_n > 0
+    rate[nz] = prior_paid[nz] / prior_n[nz]
+    mapped = pd.Series(rate, index=hist["application_id"].to_numpy())
+    return applications["application_id"].map(mapped)

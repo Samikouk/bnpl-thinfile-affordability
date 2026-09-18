@@ -6,7 +6,10 @@ createApp({
     lakebase(),
     server(),
   ],
-  async onPluginsReady(appkit) {
-    await setupConsoleRoutes(appkit);
+  onPluginsReady(appkit) {
+    setupConsoleRoutes(appkit);
   },
-}).catch(console.error);
+}).catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

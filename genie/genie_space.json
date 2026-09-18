@@ -4,7 +4,8 @@
     "sample_questions": [
       {"id": "10000000000000000000000000000001", "question": ["Which merchant category has the highest first-payment-default rate, and how many approvals did it drive?"]},
       {"id": "10000000000000000000000000000002", "question": ["What is the overall approval rate and first-payment-default rate?"]},
-      {"id": "10000000000000000000000000000003", "question": ["How do thin-file customers compare to bureau-scored customers on first-payment default?"]}
+      {"id": "10000000000000000000000000000003", "question": ["How do thin-file customers compare to bureau-scored customers on first-payment default?"]},
+      {"id": "10000000000000000000000000000004", "question": ["What approval rate and approved-book FPD would we get if we tightened Travel's threshold?"]}
     ]
   },
   "data_sources": {

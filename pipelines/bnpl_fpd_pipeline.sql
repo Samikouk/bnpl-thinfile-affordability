@@ -1,5 +1,7 @@
 -- Lakeflow Declarative Pipeline: BNPL cold-start affordability
 -- Bronze (Auto Loader streaming ingest) -> Gold (point-in-time features, labels, profile)
+-- No silver layer: sources are already conformed JSON. README and this header
+-- say bronze -> gold on purpose.
 -- Published to the pipeline default catalog/schema: bnpl_fpd_samk.demo
 
 -- ---------------------------------------------------------------------------
@@ -55,6 +57,7 @@ SELECT
   o.disposable_income_proxy,
   o.inflow_regularity_score,
   o.current_balance,
+  a.prior_bnpl_ontime_rate,
   ROUND(a.amount / GREATEST(o.disposable_income_proxy, 50), 4) AS amount_to_disposable_ratio
 FROM bronze_applications a
 LEFT JOIN bronze_customers      c ON a.customer_id = c.customer_id

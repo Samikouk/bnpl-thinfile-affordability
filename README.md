@@ -62,7 +62,7 @@ SUBMISSION.md requirement-to-artifact map
 
 ## Run it yourself
 
-Tests: `python3 -m pytest -q` (16 tests: generator, features, reason codes, guardrail).
+Tests: `python3 -m pytest -q` (generator, features, reason codes, guardrail, labels, policy, serving, notebook parity).
 Journey (needs the workspace resources): `PYTHONPATH=. python3 journey/run_journey.py`.
 Reproduce the pipeline/model/Genie/app: see `docs/superpowers/plans/2026-09-16-bnpl-thinfile-affordability.md`.
 

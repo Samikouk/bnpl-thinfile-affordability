@@ -11,6 +11,8 @@ Design choices tied to the spec and the panel review:
   - Missing bureau score (thin-file, the cold-start case) is imputed to a
     neutral value AND flagged with a `bureau_missing` indicator, so the model
     can learn "no bureau" as its own signal rather than treating it as average.
+  - `prior_bnpl_ontime_rate` is NULL for first-time customers and flagged;
+    it uses only pre-decision BNPL history.
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ NUMERIC_FEATURES = [
     "applications_last_7d",
     "email_age_days",
     "customer_tenure_days",
+    "prior_bnpl_ontime_rate",
 ]
 
 MERCHANT_CATEGORIES = [
@@ -38,7 +41,7 @@ BUREAU_IMPUTE = 600.0  # neutral fill for a missing bureau score
 
 FEATURE_COLUMNS = (
     NUMERIC_FEATURES
-    + ["thin_file_flag", "bureau_missing", "bureau_score"]
+    + ["thin_file_flag", "bureau_missing", "bureau_score", "prior_bnpl_missing"]
     + [f"mcat_{c}" for c in MERCHANT_CATEGORIES]
 )
 
@@ -52,6 +55,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     out = pd.DataFrame(index=df.index)
 
     for col in NUMERIC_FEATURES:
+        if col == "prior_bnpl_ontime_rate":
+            continue
         out[col] = pd.to_numeric(df[col], errors="coerce")
 
     out["thin_file_flag"] = pd.to_numeric(df["thin_file_flag"], errors="coerce").fillna(0).astype(int)
@@ -59,6 +64,13 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     bureau = pd.to_numeric(df["bureau_score"], errors="coerce")
     out["bureau_missing"] = bureau.isna().astype(int)
     out["bureau_score"] = bureau.fillna(BUREAU_IMPUTE)
+
+    if "prior_bnpl_ontime_rate" in df.columns:
+        prior = pd.to_numeric(df["prior_bnpl_ontime_rate"], errors="coerce")
+    else:
+        prior = pd.Series(pd.NA, index=df.index, dtype="Float64")
+    out["prior_bnpl_ontime_rate"] = prior
+    out["prior_bnpl_missing"] = prior.isna().astype(int)
 
     cats = df["merchant_category"].astype("string")
     for cat in MERCHANT_CATEGORIES:

@@ -1,13 +1,8 @@
-"""Local noise tuner (numpy only): pick a label-noise level that yields a
-realistic, defensible model AUC and matched-approval-rate reduction, before
-regenerating on the workspace. Uses a rank-AUC proxy (rank by the true signal
-vs the noisy label) which upper-bounds what the tree model recovers.
-"""
+"""Local noise tuner: vary label noise via data.labels.latent_scores."""
 import numpy as np
-import pandas as pd
 
 from data.generate_synthetic import generate, _zscore
-from data.labels import WEIGHTS
+from data.labels import WEIGHTS, fpd_labels, latent_scores
 
 
 def auc(score, y):
@@ -33,19 +28,17 @@ def main():
         "email_age_days": _zscore(g.email_age_days.values),
         "bureau_score": _zscore(g.bureau_score.values),
     }
-    signal = np.zeros(len(g))
-    for f, w in WEIGHTS.items():
-        signal += w * np.nan_to_num(z[f], nan=0.0)
     thin = g.thin_file_flag.values.astype(bool)
     bureau = g.bureau_score.values
 
-    rng = np.random.default_rng(1)
     print(f"{'noise(std,thin)':18s} {'auc':>6s} {'base':>6s} {'model_fpd':>10s} {'base_fpd':>9s} {'reduction':>10s}")
     for s, t in [(0.7, 1.3), (1.6, 2.5), (2.2, 3.4), (2.8, 4.3), (3.4, 5.2)]:
-        noise = np.where(thin, t, s) * rng.standard_normal(len(g))
-        latent = signal + noise
-        thr = np.quantile(latent, 0.945)
-        y = (latent >= thr).astype(int)
+        rng = np.random.default_rng(1)
+        latent = latent_scores(z, thin, rng, thin_noise_std=t, std_noise_std=s)
+        y, _ = fpd_labels(latent)
+        signal = np.zeros(len(g))
+        for f, w in WEIGHTS.items():
+            signal += w * np.nan_to_num(z[f], nan=0.0)
         a = auc(signal, y)
         cut = np.quantile(signal, 0.85)
         m_appr = signal < cut

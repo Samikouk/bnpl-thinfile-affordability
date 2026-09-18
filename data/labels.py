@@ -43,7 +43,11 @@ TARGET_FPD_RATE = 0.055
 
 
 def latent_scores(
-    z: dict[str, np.ndarray], thin_file: np.ndarray, rng: np.random.Generator
+    z: dict[str, np.ndarray],
+    thin_file: np.ndarray,
+    rng: np.random.Generator,
+    thin_noise_std: float | None = None,
+    std_noise_std: float | None = None,
 ) -> np.ndarray:
     """Weighted sum of standardised signals plus heteroscedastic noise.
 
@@ -59,7 +63,9 @@ def latent_scores(
         col = np.asarray(z[feat], dtype=float)
         col = np.where(np.isnan(col), 0.0, col)
         score += w * col
-    noise_std = np.where(thin_file, THIN_FILE_NOISE_STD, STD_NOISE_STD)
+    thin_std = THIN_FILE_NOISE_STD if thin_noise_std is None else thin_noise_std
+    std = STD_NOISE_STD if std_noise_std is None else std_noise_std
+    noise_std = np.where(thin_file, thin_std, std)
     score = score + rng.standard_normal(n) * noise_std
     return score
 

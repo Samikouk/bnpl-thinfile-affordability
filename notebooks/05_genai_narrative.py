@@ -31,7 +31,7 @@ narrative = spark.sql(
 print(narrative)
 
 # COMMAND ----------
-# MAGIC %md ## Guardrail (data/guardrail.py) — the automated gate before any human sees it
+# MAGIC %md ## Guardrail — copy of data/guardrail.py (kept in lockstep by tests/test_notebook_parity.py)
 
 # COMMAND ----------
 import re

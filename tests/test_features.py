@@ -54,3 +54,12 @@ def test_region_excluded_for_fairness():
     g = _assemble_gold_like(generate(seed=7, n_customers=1000, n_apps=2000))
     X = build_features(g)
     assert not any(c.lower().startswith("region") for c in X.columns)
+
+
+def test_prior_bnpl_missing_flag():
+    g = _assemble_gold_like(generate(seed=7, n_customers=400, n_apps=1200))
+    X = build_features(g)
+    missing = g["prior_bnpl_ontime_rate"].isna()
+    assert missing.any()
+    assert (X.loc[missing, "prior_bnpl_missing"] == 1).all()
+    assert (X.loc[~missing, "prior_bnpl_missing"] == 0).all()

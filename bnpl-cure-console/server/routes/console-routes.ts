@@ -1,10 +1,15 @@
-// Approval & Early-Cure Console routes.
-// Reads the synced decisions (public.decisions) + the mutable OLTP tables
-// (bnpl.cure_cases, bnpl.cohort_thresholds), and writes case dispositions back.
-// The app SP is granted access to these post-deploy (it does not own them).
-
-import { z } from 'zod';
-import { Application } from 'express';
+import { Application, Request, Response } from 'express';
+import {
+  COHORT_SQL,
+  CURE_CASES_SQL,
+  DECISIONS_SQL,
+  DispositionBody,
+  KPI_SQL,
+  MerchantParam,
+  THRESHOLDS_SQL,
+  ThresholdBody,
+} from './console-schema';
+import { actorEmail } from '../identity';
 
 interface AppKitWithLakebase {
   lakebase: {
@@ -13,85 +18,124 @@ interface AppKitWithLakebase {
   server: { extend(fn: (app: Application) => void): void };
 }
 
-const DispositionBody = z.object({
-  status: z.enum(['OPEN', 'IN_PROGRESS', 'CURED', 'CLOSED']),
-  disposition: z.string().max(2000).optional(),
-});
+function fail(res: Response, status: number, err: unknown) {
+  console.error(err);
+  const message = status === 400 || status === 401 ? (err as Error).message : 'Request failed';
+  res.status(status).json({ error: message });
+}
 
-export async function setupConsoleRoutes(appkit: AppKitWithLakebase) {
+export function setupConsoleRoutes(appkit: AppKitWithLakebase) {
   appkit.server.extend((app) => {
-    // Portfolio KPIs from the synced decisions
+    app.get('/api/whoami', (req: Request, res: Response) => {
+      const email = actorEmail(req.header('x-forwarded-email'), process.env.DATABRICKS_USER);
+      if (!email) {
+        res.status(401).json({ error: 'Signed-in email is required' });
+        return;
+      }
+      res.json({ email });
+    });
+
     app.get('/api/kpis', async (_req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(`
-          SELECT COUNT(*)::int AS applications,
-                 SUM(CASE WHEN decision='APPROVE' THEN 1 ELSE 0 END)::int AS approvals,
-                 ROUND(AVG(CASE WHEN decision='APPROVE' THEN 1.0 ELSE 0 END)*100, 1) AS approval_pct,
-                 ROUND(AVG(fpd_actual)*100, 2) AS fpd_pct
-          FROM public.decisions`);
+        const { rows } = await appkit.lakebase.query(KPI_SQL);
         res.json(rows[0]);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
 
-    // FPD + approvals by merchant cohort (the Genie-surfaced signal)
     app.get('/api/cohorts', async (_req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(`
-          SELECT merchant_category,
-                 COUNT(*)::int AS applications,
-                 SUM(CASE WHEN decision='APPROVE' THEN 1 ELSE 0 END)::int AS approvals,
-                 ROUND(AVG(fpd_actual)*100, 2) AS fpd_pct
-          FROM public.decisions GROUP BY merchant_category ORDER BY fpd_pct DESC`);
+        const { rows } = await appkit.lakebase.query(COHORT_SQL);
         res.json(rows);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
 
-    // Recent decision queue with score + reason codes
     app.get('/api/decisions', async (_req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(`
-          SELECT application_id, merchant_category, ROUND(score::numeric, 3) AS score,
-                 decision, reason_codes, thin_file_flag
-          FROM public.decisions ORDER BY score DESC LIMIT 40`);
+        const { rows } = await appkit.lakebase.query(DECISIONS_SQL);
         res.json(rows);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
 
-    // Per-cohort approval thresholds (mutable)
     app.get('/api/thresholds', async (_req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(
-          `SELECT merchant_category, threshold, updated_by, updated_at
-           FROM bnpl.cohort_thresholds ORDER BY merchant_category`);
+        const { rows } = await appkit.lakebase.query(THRESHOLDS_SQL);
         res.json(rows);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
 
-    // Early-cure case queue (mutable OLTP)
+    app.patch('/api/thresholds/:merchant', async (req, res) => {
+      const merchant = MerchantParam.safeParse(req.params.merchant);
+      const parsed = ThresholdBody.safeParse(req.body);
+      const email = actorEmail(req.header('x-forwarded-email'), process.env.DATABRICKS_USER);
+      if (!merchant.success || !parsed.success) {
+        res.status(400).json({ error: 'Invalid input' });
+        return;
+      }
+      if (!email) {
+        res.status(401).json({ error: 'Signed-in email is required' });
+        return;
+      }
+      try {
+        const { rows } = await appkit.lakebase.query(
+          `UPDATE bnpl.cohort_thresholds
+           SET threshold=$1, updated_by=$2, updated_at=NOW()
+           WHERE merchant_category=$3
+           RETURNING merchant_category, threshold, updated_by, updated_at`,
+          [parsed.data.threshold, email, merchant.data],
+        );
+        if (rows.length === 0) {
+          res.status(404).json({ error: 'not found' });
+          return;
+        }
+        res.json(rows[0]);
+      } catch (err) {
+        fail(res, 500, err);
+      }
+    });
+
     app.get('/api/cure-cases', async (_req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(`
-          SELECT case_id, application_id, customer_id, status, priority, assignee,
-                 LEFT(COALESCE(cure_narrative,''), 240) AS cure_narrative, updated_at
-          FROM bnpl.cure_cases ORDER BY updated_at DESC LIMIT 40`);
+        const { rows } = await appkit.lakebase.query(CURE_CASES_SQL);
         res.json(rows);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
 
-    // Write-back: analyst dispositions a cure case
     app.post('/api/cure-cases/:id/disposition', async (req, res) => {
       const id = parseInt(req.params.id, 10);
       const parsed = DispositionBody.safeParse(req.body);
-      if (isNaN(id) || !parsed.success) { res.status(400).json({ error: 'Invalid input' }); return; }
+      const email = actorEmail(req.header('x-forwarded-email'), process.env.DATABRICKS_USER);
+      if (isNaN(id) || !parsed.success) {
+        res.status(400).json({ error: 'Invalid input' });
+        return;
+      }
+      if (!email) {
+        res.status(401).json({ error: 'Signed-in email is required' });
+        return;
+      }
       try {
-        const email = req.header('x-forwarded-email') || 'analyst';
         const { rows } = await appkit.lakebase.query(
           `UPDATE bnpl.cure_cases SET status=$1, disposition=$2, assignee=$3, updated_at=NOW()
            WHERE case_id=$4 RETURNING case_id, status, assignee`,
-          [parsed.data.status, parsed.data.disposition ?? null, email, id]);
-        if (rows.length === 0) { res.status(404).json({ error: 'not found' }); return; }
+          [parsed.data.status, parsed.data.disposition ?? null, email, id],
+        );
+        if (rows.length === 0) {
+          res.status(404).json({ error: 'not found' });
+          return;
+        }
         res.json(rows[0]);
-      } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      } catch (err) {
+        fail(res, 500, err);
+      }
     });
   });
 }

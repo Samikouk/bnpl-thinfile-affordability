@@ -43,3 +43,20 @@ def test_no_leakage_columns_in_features():
     feats = set(d["applications"].columns)
     banned = {"paid_flag", "paid_date", "fpd", "installment_no"}
     assert not (banned & feats), f"leakage columns present: {banned & feats}"
+
+
+def test_merchant_id_not_collapsed_to_category_index():
+    d = generate(seed=7, n_customers=2000, n_apps=5000)
+    n_merchants = d["applications"]["merchant_id"].nunique()
+    assert n_merchants >= 50, n_merchants
+
+
+def test_prior_bnpl_null_for_first_app_and_in_unit_interval():
+    d = generate(seed=7, n_customers=500, n_apps=2000)
+    apps = d["applications"].sort_values(["customer_id", "ts", "application_id"])
+    first = apps.groupby("customer_id", sort=False).head(1)
+    assert first["prior_bnpl_ontime_rate"].isna().all()
+    later = apps.loc[~apps.index.isin(first.index), "prior_bnpl_ontime_rate"].dropna()
+    assert (later >= 0).all() and (later <= 1).all()
+    # returning customers exist at this volume
+    assert apps["prior_bnpl_ontime_rate"].notna().mean() > 0.4

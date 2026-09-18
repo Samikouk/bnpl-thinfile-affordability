@@ -17,8 +17,12 @@ read/write on `bnpl.*` (mutable) after deploy (it does not own those tables).
 ## Live API responses (authenticated OAuth call to the deployed app)
 
 The console is text-native by design: its Express routes (`bnpl-cure-console/server/routes/console-routes.ts`)
-issue the queries below against Lakebase and return real rows. These are live
-responses from the deployed app, not a screenshot.
+issue the queries below against Lakebase and return real rows. On this branch the
+KPI FPD is **approved-book** (`AVG(fpd_actual) FILTER (WHERE decision='APPROVE')`),
+there is a `cures_in_progress` count, `PATCH /api/thresholds/:merchant` writes
+cohort thresholds, and disposition requires a signed-in email
+(`x-forwarded-email` or `DATABRICKS_USER` for local). Live JSON below is from
+the previous deploy (portfolio FPD 5.50%); re-hit the APIs after deploy.
 
 `GET /api/kpis`
 ```json

@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS bnpl.cure_cases (
     updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
--- Seed a starting threshold per merchant category (the loop will tighten risky ones).
+-- Seed a starting threshold per merchant category (must match data/policy.py
+-- DEFAULT_THRESHOLD). Scoring approves when score < threshold; the loop tightens risky cohorts.
 INSERT INTO bnpl.cohort_thresholds (merchant_category, threshold) VALUES
   ('Fashion', 0.30), ('Electronics', 0.30), ('Home', 0.30), ('Beauty', 0.30),
   ('Gaming', 0.30), ('Travel', 0.30), ('Fitness', 0.30), ('Jewellery', 0.30)

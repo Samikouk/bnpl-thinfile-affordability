@@ -1,0 +1,18 @@
+[project]
+name = "bnpl-thinfile-affordability"
+version = "0.1.0"
+description = "Cold-start affordability for Pay-in-4 BNPL (synthetic Databricks demo)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+ml = ["xgboost", "scikit-learn"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
