@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { actorEmail } from '../identity';
-import { DispositionBody, KPI_SQL, MerchantParam, ThresholdBody } from './console-schema';
+import { DispositionBody, DECISIONS_SQL, KPI_SQL, MerchantParam, ThresholdBody } from './console-schema';
 
 describe('actorEmail', () => {
   it('requires a real email and does not default to analyst', () => {
@@ -34,5 +34,13 @@ describe('KPI SQL', () => {
   it('computes FPD on the approved book and counts open cures', () => {
     expect(KPI_SQL).toContain("FILTER (WHERE decision='APPROVE')");
     expect(KPI_SQL).toContain('cures_in_progress');
+  });
+});
+
+describe('decisions SQL', () => {
+  it('pulls both declines and approvals so the queue is not risk-only', () => {
+    expect(DECISIONS_SQL).toContain("decision = 'DECLINE'");
+    expect(DECISIONS_SQL).toContain("decision = 'APPROVE'");
+    expect(DECISIONS_SQL).toContain('UNION ALL');
   });
 });

@@ -40,10 +40,23 @@ export const COHORT_SQL = `
   FROM public.decisions GROUP BY merchant_category ORDER BY fpd_pct DESC`;
 
 export const DECISIONS_SQL = `
-  SELECT application_id, merchant_category,
-         ROUND(score::numeric, 3)::float AS score,
-         decision, reason_codes, thin_file_flag::int AS thin_file_flag
-  FROM public.decisions ORDER BY score DESC LIMIT 40`;
+  SELECT application_id, merchant_category, score, decision, reason_codes, thin_file_flag
+  FROM (
+    SELECT application_id, merchant_category,
+           ROUND(score::numeric, 3)::float AS score,
+           decision, reason_codes, thin_file_flag::int AS thin_file_flag
+    FROM public.decisions WHERE decision = 'DECLINE'
+    ORDER BY score DESC LIMIT 20
+  ) declines
+  UNION ALL
+  SELECT application_id, merchant_category, score, decision, reason_codes, thin_file_flag
+  FROM (
+    SELECT application_id, merchant_category,
+           ROUND(score::numeric, 3)::float AS score,
+           decision, reason_codes, thin_file_flag::int AS thin_file_flag
+    FROM public.decisions WHERE decision = 'APPROVE'
+    ORDER BY score DESC LIMIT 20
+  ) approvals`
 
 export const THRESHOLDS_SQL = `
   SELECT merchant_category, threshold::float AS threshold, updated_by, updated_at

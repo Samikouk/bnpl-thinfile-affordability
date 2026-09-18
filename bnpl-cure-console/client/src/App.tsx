@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { DraftNarrative } from '@/lib/DraftNarrative';
 import {
   Alert,
   AlertDescription,
@@ -275,14 +276,15 @@ export default function App() {
         <CardHeader>
           <CardTitle className="text-base">Decision queue</CardTitle>
           <CardDescription>
-            Score is P(FPD). Reason codes are SHAP, not the LLM. Highest scores first.
+            Score is P(FPD). Reason codes are SHAP, not the LLM. Twenty highest-risk
+            declines and twenty highest-score approvals.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <QueryState loading={decisions.loading} error={decisions.error} empty={!decisions.loading && !!decisions.data && decisions.data.length === 0} emptyTitle="No decisions">
             {decisions.data && (
               <Table>
-                <TableCaption>Latest 40 rows from public.decisions</TableCaption>
+                <TableCaption>20 DECLINE + 20 APPROVE from public.decisions</TableCaption>
                 <TableHeader>
                   <TableRow>
                     <TableHead scope="col">Application</TableHead>
@@ -416,9 +418,7 @@ export default function App() {
             {selected && (
               <div className="mt-4 space-y-3">
                 <h2 className="text-sm font-semibold">Case #{selected.case_id} draft (human review)</h2>
-                <p className="text-muted-foreground whitespace-pre-wrap text-sm">
-                  {selected.cure_narrative || 'No narrative stored.'}
-                </p>
+                <DraftNarrative text={selected.cure_narrative || ''} />
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="disp-status">Disposition status</Label>
                   <Select value={dispStatus} onValueChange={setDispStatus}>
